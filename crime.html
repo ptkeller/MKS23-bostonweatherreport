@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  position: relative;
+  width: 960px;
+}
+
+.axis text {
+  font: 8px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.bar {
+  fill: steelblue;
+  fill-opacity: .9;
+}
+
+.x.axis path {
+  display: none;
+}
+
+label {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+</style>
+<label><input type="checkbox"> Sort values</label>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script>
+
+var margin = {top: 20, right: 20, bottom: 30, left: 40},
+    width = 1260 - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom;
+
+var x = d3.scale.ordinal()
+    .rangeRoundBands([0, width], .1, 1);
+
+var y = d3.scale.linear()
+    .range([height, 0]);
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom");
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .orient("left")
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+var data;
+var req = $.ajax({
+  url : "http://sanfrancisco.crimespotting.org/crime-data?format=json&count=500&type=aggravated_assault,%20murder,%20robbery,%20simple_assault,%20arson,%20burglary,%20theft,%20vandalism,%20vehicle_theft,%20alcohol,%20disturbing_the_peace,%20narcotics,%20prostitution&dstart=2010-01-01&dend=2014-10-01",
+  type : "GET",
+  jsonpCallback: "myCallback",
+  dataType : 'jsonp',
+  contentType: 'application/json',
+  success : function(json){
+    data = json;
+  }
+})
+
+
+
+var buildCrime = function(){
+  var crimeArray = [];
+  for(var i = 0, length = data.features.length; i < length; i++){
+    crimeArray.push(data.features[i].properties.crime_type);
+  }
+  var obj = {};
+  var result = [];
+  for (var i = 0; i < crimeArray.length; i++) {
+    if (!obj[crimeArray[i]]) {
+      obj[crimeArray[i]] = 1;
+      for (var j = i + 1; j < crimeArray.length; j++) {
+        if (crimeArray[j] === crimeArray[i]) {
+          obj[crimeArray[i]]++;
+        }
+      }
+    }
+  }
+  for (var key in obj) {
+    result.push([key, obj[key]]);
+  }
+  return result;
+}
+
+$.when(req).done(function() {
+  var crimeData = buildCrime();
+
+  x.domain(crimeData.map(function(d) { return d[0]; }));
+  y.domain([0, d3.max(crimeData, function(d) {return d[1]; })]);
+
+   svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis);
+
+  svg.append("g")
+      .attr("class", "y axis")
+      .call(yAxis)
+    .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 6)
+      .attr("dy", ".71em")
+      .style("text-anchor", "end")
+      .text("Frequency");
+
+  svg.selectAll(".bar")
+      .data(crimeData)
+    .enter().append("rect")
+      .attr("class", "bar")
+      .attr("x", function(d) { return x(d[0]); })
+      .attr("width", x.rangeBand())
+      .attr("y", function(d) { return y(d[1]); })
+      .attr("height", function(d) { return height - y(d[1]); })
+    .on('mouseover', function(d) {
+      d3.select(this).style({fill : '#bd0505'})
+
+    })
+    .on('mouseout', function(d) {
+      d3.select(this).style({fill : 'steelblue'})
+    })
+
+      ;
+
+  d3.select("input").on("change", change);
+
+  var sortTimeout = setTimeout(function() {
+    d3.select("input").property("checked", true).each(change);
+  }, 4000);
+
+  function change() {
+    clearTimeout(sortTimeout);
+
+    var x0 = x.domain(crimeData.sort(this.checked
+        ? function(a, b) { return b[1] - a[1]; }
+        : function(a, b) { return d3.ascending(a[0], b[0]); })
+        .map(function(d) { return d[0]; }))
+        .copy();
+
+    svg.selectAll(".bar")
+        .sort(function(a, b) { return x0(a[0]) - x0(b[0]); });
+
+    var transition = svg.transition().duration(1000),
+        delay = function(d, i) { return i * 50; };
+
+    transition.selectAll(".bar")
+        .delay(delay)
+        .attr("x", function(d) { return x0(d[0]); });
+
+    transition.select(".x.axis")
+        .call(xAxis)
+      .selectAll("g")
+        .delay(delay);
+    }
+
+})
+
+
+
+
+</script>
